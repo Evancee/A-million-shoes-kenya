@@ -1,5 +1,5 @@
 :root {
-  --ink: #17231c;
+  --ink: #0a4021;
   --muted: #78817a;
   --line: #e5e9e2;
   --green: #174c35;
@@ -51,6 +51,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .brand-mark span:last-child { background: #21804b; }
 .sidebar-label { margin: 46px 10px 12px; color: #a6b9a9; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; }
 .sidebar-nav { display: grid; gap: 5px; }
+.admin-menu-toggle { display: none; width: 42px; height: 42px; align-items: center; justify-content: center; flex-direction: column; gap: 5px; padding: 0; border: 1px solid #ffffff40; border-radius: 50%; color: #fff; background: transparent; cursor: pointer; }
+.admin-menu-toggle span { width: 15px; height: 1.5px; background: currentColor; transition: transform .2s; }
+.admin-menu-toggle[aria-expanded=true] span:first-child { transform: translateY(3.25px) rotate(45deg); }
+.admin-menu-toggle[aria-expanded=true] span:last-child { transform: translateY(-3.25px) rotate(-45deg); }
 .sidebar-link { position: relative; display: flex; align-items: center; gap: 12px; min-height: 45px; padding: 10px 12px; border: 1px solid transparent; border-radius: 8px; color: #d2ded4; font-size: 12px; font-weight: 500; transition: color .18s ease, background .18s ease, border-color .18s ease; }
 .sidebar-link svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .sidebar-link:hover { color: #fff; background: #ffffff0d; }
@@ -241,3 +245,41 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .school-metric span { display: block; font-size: 7px; line-height: 1.25; overflow-wrap: anywhere; }
 }
 
+
+[hidden] { display: none !important; }
+.auth-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--surface); }
+.auth-card { width: min(440px, 100%); display: grid; gap: 11px; padding: 32px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 12px 40px #2436290d; }
+.auth-card .sidebar-brand { margin-bottom: 22px; padding: 0; }
+.auth-card h1 { margin: 0; font-size: 30px; letter-spacing: -1px; }
+.auth-label { margin-top: 6px; color: #405246; font-size: 11px; font-weight: 650; }
+.auth-card input, .record-fields input, .record-fields select, .record-fields textarea { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #dce3da; border-radius: 7px; color: var(--ink); background: #fff; }
+.auth-card .button { margin-top: 10px; }
+.auth-message { min-height: 22px; margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.auth-message.is-error, .status-message.is-error { color: #a3211d; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.topbar-actions .button { min-height: 38px; padding: 8px 14px; }
+.subheading { margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--line); }
+.table-wrap { width: 100%; overflow-x: auto; }
+.admin-data-table { width: 100%; min-width: 800px; border-collapse: collapse; font-size: 11px; }
+.admin-data-table th, .admin-data-table td { padding: 11px 10px; border-bottom: 1px solid #edf0eb; text-align: left; vertical-align: middle; }
+.admin-data-table th { color: #6c786e; font-size: 9px; font-weight: 750; text-transform: uppercase; letter-spacing: .5px; }
+.admin-data-table td { max-width: 260px; overflow-wrap: anywhere; }
+.admin-data-table th:last-child, .admin-data-table td:last-child { width: 220px; min-width: 220px; white-space: nowrap; }
+.table-actions { display: flex; flex-wrap: nowrap; gap: 6px; width: max-content; }
+.table-actions button { flex: none; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; color: var(--green); background: #fff; font-size: 9px; white-space: nowrap; cursor: pointer; }
+.table-actions button[data-review="rejected"], .table-actions button[data-status-review="rejected"] { color: #a3211d; }
+.status-rejected { color: #a3211d; border-color: #efd7d5; background: #fff5f4; }
+.consent-field { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 11px; }
+.consent-field input { width: 16px; min-height: 16px; }
+.status-message { color: var(--muted); font-size: 11px; }
+@media (max-width: 700px) {
+  .auth-card { padding: 24px 19px; }
+  .topbar-actions { gap: 6px; }
+  .topbar-actions .preview-link { min-height: 34px; padding-inline: 10px; font-size: 9px; }
+  .topbar-actions .button { padding-inline: 10px; font-size: 10px; }
+  .admin-data-table { min-width: 800px; }
+  .admin-menu-toggle { display: flex; grid-column: 2; grid-row: 1; justify-self: end; }
+  .sidebar-nav { display: none; grid-column: 1 / -1; grid-row: 2; overflow: visible; padding: 0; }
+  .sidebar-nav.is-open { display: grid; gap: 5px; }
+  .sidebar-link { width: 100%; min-height: 44px; padding: 10px 12px; font-size: 12px; }
+}

@@ -1,0 +1,24 @@
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated build output
+node_modules/
+dist/
+build/
+coverage/
+
+# Logs and local tool state
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+.supabase/
+.vercel/
+.netlify/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini

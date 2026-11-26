@@ -1,480 +1,406 @@
-const storageKey = window.campaignStorageKey;
-const storagePreparation = window.prepareCampaignStorage();
-const cloneData = window.cloneCampaignData;
+const client = window.supabaseClient;
+let activeUser = null;
+let activeCampaignId = null;
+let records = { campaigns: [], contributors: [], contributions: [], shoe_procurements: [], schools: [], distributions: [] };
+let editing = null;
+let saving = false;
 const formatNumber = (value) => new Intl.NumberFormat('en-KE').format(Number(value) || 0);
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-}[character]));
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+const setAuthMessage = (message, error = false) => {
+  const node = document.querySelector('#auth-message');
+  node.textContent = message;
+  node.classList.toggle('is-error', error);
+};
+const setDashboardMessage = (message, error = false) => {
+  const node = document.querySelector('#dashboard-message');
+  node.textContent = message;
+  node.classList.toggle('is-error', error);
+};
+const setDistributionMessage = (message, error = false) => {
+  const node = document.querySelector('#distribution-action-message');
+  node.textContent = message;
+  node.classList.toggle('is-error', error);
+};
+function showGate(message = 'Sign in with your administrator account.', error = false) {
+  document.querySelector('#admin-dashboard').hidden = true;
+  document.querySelector('#auth-gate').hidden = false;
+  document.querySelector('#login-form').hidden = false;
+  setAuthMessage(message, error);
+}
+function showDashboard() {
+  document.querySelector('#auth-gate').hidden = true;
+  document.querySelector('#admin-dashboard').hidden = false;
+}
+async function authorizeSession(session) {
+  if (!session?.user) {
+    activeUser = null;
+    showGate('Sign in with your administrator account.');
+    return false;
+  }
+  const { data, error } = await client.rpc('is_admin');
+  if (error) {
+    await client.auth.signOut();
+    activeUser = null;
+    showGate(`Administrator authorization failed: ${error.message}`, true);
+    return false;
+  }
+  if (data !== true) {
+    await client.auth.signOut();
+    activeUser = null;
+    showGate('This account is authenticated but is not authorized as an administrator.', true);
+    return false;
+  }
+  activeUser = session.user;
+  showDashboard();
+  await loadDashboardData();
+  return true;
+}
 
-let lastSavedValue = null;
-let dataLoadError = storagePreparation.ok ? '' : storagePreparation.error;
-let migrationWarning = '';
+const loginForm = document.querySelector('#login-form');
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (saving) return;
+  saving = true;
+  const submit = document.querySelector('#login-submit');
+  submit.disabled = true;
+  setAuthMessage('Signing in...');
+  const { error } = await client.auth.signInWithPassword({ email: loginForm.elements.email.value.trim(), password: loginForm.elements.password.value });
+  saving = false;
+  submit.disabled = false;
+  if (error) {
+    setAuthMessage(error.message.includes('Invalid login credentials') ? 'Email or password is incorrect.' : `Sign in failed: ${error.message}`, true);
+    return;
+  }
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError || !sessionData.session) {
+    showGate('Your session could not be established. Please sign in again.', true);
+    return;
+  }
+  await authorizeSession(sessionData.session);
+});
 
-function loadData() {
+document.querySelector('#logout-button').addEventListener('click', async () => {
+  const { error } = await client.auth.signOut();
+  if (error) setDashboardMessage(`Could not end the session: ${error.message}`, true);
+  else showGate('You have been signed out.');
+});
+
+async function loadDashboardData(successMessage = 'Campaign statistics are calculated from the database.') {
+  document.querySelector('#data-status').textContent = 'LOADING';
+  setDashboardMessage('Loading campaign records...');
   try {
-    lastSavedValue = localStorage.getItem(storageKey);
-    const parsed = lastSavedValue === null ? null : JSON.parse(lastSavedValue);
-    const result = window.normalizeCampaignData(parsed);
-    if (result.error) throw new Error(result.error);
-    if (result.migrated && lastSavedValue !== null && storagePreparation.ok) {
-      try {
-        lastSavedValue = window.writeCampaignData(result.data, lastSavedValue);
-      } catch (error) {
-        migrationWarning = `Records were loaded, but their IDs could not be saved yet: ${error.message}`;
-      }
+    const [statsResponse, ...responses] = await Promise.all([
+      client.from('campaign_statistics').select('*'),
+      ...Object.keys(records).map((table) => client.from(table).select('*'))
+    ]);
+    if (statsResponse.error) throw new Error(`Could not load campaign statistics: ${statsResponse.error.message}`);
+    const statsRows = statsResponse.data || [];
+    const stats = statsRows.find((row) => /a million shoes kenya/i.test(row.campaign_name || '')) || statsRows[0];
+    activeCampaignId = stats?.campaign_id || null;
+    if (!activeCampaignId) throw new Error('The A Million Shoes Kenya campaign row was not found in campaign_statistics.');
+    document.querySelector('#stat-target').textContent = formatNumber(1000000);
+    const secured = Number(stats.secured_shoes ?? stats.pairs_secured ?? stats.total_pairs_secured);
+    const distributed = Number(stats.distributed_shoes ?? stats.pairs_distributed ?? stats.total_pairs_distributed);
+    const reachedSchools = Number(stats.schools_reached);
+    const reachedChildren = Number(stats.children_reached);
+    if (![secured, distributed, reachedSchools, reachedChildren].every(Number.isFinite)) {
+      throw new Error('campaign_statistics is missing one or more calculated totals.');
     }
-    return result.data;
+    document.querySelector('#stat-secured').textContent = formatNumber(secured);
+    document.querySelector('#stat-distributed').textContent = formatNumber(distributed);
+    document.querySelector('#stat-schools').textContent = formatNumber(reachedSchools);
+    document.querySelector('#stat-children').textContent = formatNumber(reachedChildren);
+    const progress = Number(stats.progress_percentage);
+    document.querySelector('#stat-progress').textContent = Number.isFinite(progress) ? `${progress}%` : '-';
+    Object.keys(records).forEach((table, index) => {
+      if (responses[index].error) throw new Error(`Could not load ${table}: ${responses[index].error.message}`);
+      const rows = responses[index].data || [];
+      records[table] = ['campaigns', 'distributions'].includes(table)
+        ? rows
+        : rows.filter((row) => !row.campaign_id || row.campaign_id === activeCampaignId);
+    });
+    renderAll();
+    document.querySelector('#data-status').textContent = 'LIVE DATA';
+    setDashboardMessage(successMessage);
   } catch (error) {
-    dataLoadError = `Saved campaign data could not be read safely: ${error.message} Reset campaign data to continue.`;
-    return cloneData(window.campaignDefaults);
+    document.querySelector('#data-status').textContent = 'DATA ERROR';
+    setDashboardMessage(error.message, true);
+    console.error(error);
   }
 }
 
-let campaignData = loadData();
-let statsDraft = null;
-const saveMessage = document.querySelector('#save-message');
-const statsForm = document.querySelector('#stats-form');
-const contributorDialog = document.querySelector('#contributor-dialog');
-const contributorForm = document.querySelector('#contributor-form');
-const schoolDialog = document.querySelector('#school-dialog');
-const schoolForm = document.querySelector('#school-form');
-let editingContributorId = null;
-let editingSchoolId = null;
-let openRecordMenuButton = null;
-let dialogReturnFocus = null;
-
-function showMessage(message, isError = false) {
-  saveMessage.textContent = message;
-  saveMessage.classList.toggle('is-error', isError);
+function statusLabel(row) {
+  const status = row.verification_status || row.status || '-';
+  const klass = status === 'verified' ? 'status-verified' : status === 'rejected' ? 'status-rejected' : 'status-pending';
+  return `<span class="record-status ${klass}">${escapeHtml(status)}</span>`;
 }
-
-function updateOverview(data = campaignData) {
-  const percentage = data.target > 0 ? data.pairsSecured / data.target * 100 : 0;
-  const progressValue = Math.min(100, Math.max(0, percentage));
-  document.querySelector('#overview-target').textContent = formatNumber(data.target);
-  document.querySelector('#overview-secured').textContent = formatNumber(data.pairsSecured);
-  document.querySelector('#overview-distributed').textContent = formatNumber(data.pairsDistributed);
-  document.querySelector('#overview-remaining').textContent = formatNumber(Math.max(0, data.target - data.pairsSecured));
-  document.querySelector('#overview-progress').textContent = `${Number(percentage.toFixed(1))}%`;
-  document.querySelector('#overview-progress-inline').textContent = `${Number(percentage.toFixed(1))}%`;
-  const progressFill = document.querySelector('#admin-progress-fill');
-  const progressTrack = progressFill.closest('[role="progressbar"]');
-  progressFill.style.width = `${progressValue}%`;
-  progressTrack.setAttribute('aria-valuenow', String(Number(progressValue.toFixed(1))));
-  progressTrack.setAttribute('aria-valuetext', `${Number(percentage.toFixed(1))}% progress; ${formatNumber(data.pairsSecured)} of ${formatNumber(data.target)} pairs secured`);
-  document.querySelector('#overview-contributors').textContent = formatNumber(data.contributors.length);
-  document.querySelector('#overview-schools').textContent = formatNumber(data.schoolsReached);
-  const hasEnteredData = data.target !== window.campaignDefaults.target ||
-    [data.pairsSecured, data.pairsDistributed, data.schoolsReached, data.childrenReached].some((value) => value > 0) ||
-    data.contributors.length > 0 || data.schools.length > 0;
-  document.querySelector('#campaign-data-status').textContent = hasEnteredData ? 'DATA ENTERED' : 'DATA PENDING';
+function actions(row, table, canEdit = false) {
+  const id = escapeHtml(row.id);
+  const mayEdit = canEdit && (table !== 'distributions' || row.verification_status === 'pending');
+  const edit = mayEdit ? `<button type="button" data-edit="${table}" data-id="${id}">Edit</button>` : '';
+  const statusReview = ['contributors', 'schools'].includes(table)
+    ? `<button type="button" data-status-review="verified" data-table="${table}" data-id="${id}">Verify</button><button type="button" data-status-review="rejected" data-table="${table}" data-id="${id}">Reject</button>` : '';
+  const review = ['contributions', 'shoe_procurements', 'distributions'].includes(table) && row.verification_status === 'pending'
+    ? `<button type="button" data-review="verified" data-table="${table}" data-id="${id}">Verify</button><button type="button" data-review="rejected" data-table="${table}" data-id="${id}">Reject</button>` : '';
+  return `<div class="table-actions">${edit}${statusReview}${review}</div>`;
 }
-
-function fillStatsForm(source = campaignData) {
-  statsDraft = {
-    target: String(source.target),
-    pairsSecured: String(source.pairsSecured),
-    pairsDistributed: String(source.pairsDistributed),
-    schoolsReached: String(source.schoolsReached),
-    childrenReached: String(source.childrenReached)
-  };
-  for (const [field, value] of Object.entries(statsDraft)) statsForm.elements[field].value = value;
+function renderTable(elementId, table, columns, canEdit = false) {
+  const rows = records[table];
+  const container = document.querySelector(`#${elementId}`);
+  if (!rows.length) { container.innerHTML = '<p class="empty-state">No records found.</p>'; return; }
+  if (!columns.length) columns = Object.keys(rows[0]).map((field) => [field, field.replaceAll('_', ' ')]);
+  container.innerHTML = `<table class="admin-data-table"><thead><tr>${columns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join('')}<th>Status</th><th>Actions</th></tr></thead><tbody>${rows.map((row) => `<tr>${columns.map(([field]) => {
+    const value = table === 'distributions' && field === 'distributed_at' ? formatDistributionDate(row[field]) : row[field] ?? '-';
+    return `<td>${escapeHtml(value)}</td>`;
+  }).join('')}<td>${statusLabel(row)}</td><td>${actions(row, table, canEdit)}</td></tr>`).join('')}</tbody></table>`;
 }
-
-function statusMarkup(record) {
-  const verified = record.verificationStatus === 'verified';
-  return `<span class="record-status ${verified ? 'status-verified' : 'status-pending'}" aria-label="${verified ? 'Verified' : 'Pending verification'}">${verified ? 'Verified' : 'Pending'}</span>`;
-}
-
-function renderContributors() {
-  const editor = document.querySelector('#contributors-editor');
-  if (!campaignData.contributors.length) {
-    editor.innerHTML = '<p class="empty-state">No contributor records yet. Campaign information is awaiting initial entry and verification. Add a contributor when verified details are available.</p>';
-    return;
-  }
-  editor.innerHTML = campaignData.contributors.map((person, index) => {
-    const recordId = escapeHtml(person.id);
-    const name = escapeHtml(person.name);
-    const actionLabel = person.verificationStatus === 'verified' ? 'Mark as pending' : 'Mark as verified';
-    return `
-      <div class="contributor-row">
-        <span class="contributor-row-name">${name}</span>
-        ${statusMarkup(person)}
-        <div class="contributor-menu-wrap">
-          <button class="contributor-menu-toggle" type="button" data-record-menu="contributors-${index}" data-collection="contributors" data-record-id="${recordId}" aria-label="More actions for ${name}" aria-expanded="false" aria-controls="contributor-menu-${index}"><span aria-hidden="true">⋮</span></button>
-          <div class="contributor-dropdown" id="contributor-menu-${index}" hidden>
-            <button type="button" data-record-action="edit" data-collection="contributors" data-record-id="${recordId}">Edit contributor</button>
-            <button type="button" data-record-action="verification" data-collection="contributors" data-record-id="${recordId}">${actionLabel}</button>
-            <button type="button" data-record-action="delete" data-collection="contributors" data-record-id="${recordId}">Delete contributor</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderSchools() {
-  const editor = document.querySelector('#schools-editor');
-  if (!campaignData.schools.length) {
-    editor.innerHTML = '<p class="empty-state">No school records yet. Campaign information is awaiting initial entry and verification. Add a school when verified details are available.</p>';
-    return;
-  }
-  editor.innerHTML = campaignData.schools.map((school, index) => {
-    const recordId = escapeHtml(school.id);
-    const name = escapeHtml(school.name);
-    const actionLabel = school.verificationStatus === 'verified' ? 'Mark as pending' : 'Mark as verified';
-    return `
-      <div class="contributor-row school-row">
-        <span class="contributor-row-name">${name}</span>
-        ${statusMarkup(school)}
-        <div class="contributor-menu-wrap">
-          <button class="contributor-menu-toggle" type="button" data-record-menu="schools-${index}" data-collection="schools" data-record-id="${recordId}" aria-label="More actions for ${name}" aria-expanded="false" aria-controls="school-menu-${index}"><span aria-hidden="true">⋮</span></button>
-          <div class="contributor-dropdown" id="school-menu-${index}" hidden>
-            <button type="button" data-record-action="edit" data-collection="schools" data-record-id="${recordId}">Edit school</button>
-            <button type="button" data-record-action="verification" data-collection="schools" data-record-id="${recordId}">${actionLabel}</button>
-            <button type="button" data-record-action="delete" data-collection="schools" data-record-id="${recordId}">Delete school</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderDashboard() {
-  updateOverview();
-  fillStatsForm();
-  renderContributors();
-  renderSchools();
-}
-
-function saveCandidate(candidate) {
-  if (dataLoadError) {
-    showMessage(dataLoadError, true);
-    return false;
-  }
-  const validationError = window.validateCampaignData(candidate);
-  if (validationError) {
-    showMessage(validationError, true);
-    return false;
-  }
-  try {
-    lastSavedValue = window.writeCampaignData(candidate, lastSavedValue);
-    campaignData = candidate;
-    migrationWarning = '';
-    showMessage('Changes confirmed and saved in this browser.');
-    return true;
-  } catch (error) {
-    showMessage(`Save failed. Your saved campaign data was kept. ${error.message}`, true);
-    return false;
-  }
-}
-
-statsForm.addEventListener('input', () => {
-  statsDraft = {
-    target: statsForm.elements.target.value,
-    pairsSecured: statsForm.elements.pairsSecured.value,
-    pairsDistributed: statsForm.elements.pairsDistributed.value,
-    schoolsReached: statsForm.elements.schoolsReached.value,
-    childrenReached: statsForm.elements.childrenReached.value
-  };
-  showMessage('Unsaved statistics. Select Save campaign statistics to commit these values.');
-});
-
-statsForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  if (!statsForm.reportValidity()) return;
-  const candidate = cloneData(campaignData);
-  candidate.target = Number(statsDraft.target);
-  candidate.pairsSecured = Number(statsDraft.pairsSecured);
-  candidate.pairsDistributed = Number(statsDraft.pairsDistributed);
-  candidate.schoolsReached = Number(statsDraft.schoolsReached);
-  candidate.childrenReached = Number(statsDraft.childrenReached);
-  if (saveCandidate(candidate)) updateOverview();
-});
-
-function getRecord(collection, recordId) {
-  if (!['contributors', 'schools'].includes(collection)) return null;
-  return campaignData[collection].find((record) => record.id === recordId) || null;
-}
-
-function findRecordMenuButton(collection, recordId) {
-  return [...document.querySelectorAll('[data-record-menu]')]
-    .find((button) => button.dataset.collection === collection && button.dataset.recordId === recordId) || null;
-}
-
-function closeRecordMenu(restoreFocus = false) {
-  if (!openRecordMenuButton) return;
-  const button = openRecordMenuButton;
-  const dropdown = document.getElementById(button.getAttribute('aria-controls'));
-  button.setAttribute('aria-expanded', 'false');
-  if (dropdown) dropdown.hidden = true;
-  openRecordMenuButton = null;
-  if (restoreFocus && button.isConnected) button.focus();
-}
-
-function openContributorEditor(recordId = null, returnFocus = null) {
-  editingContributorId = recordId;
-  dialogReturnFocus = returnFocus;
-  const contributor = recordId === null ? {
-    id: window.createCampaignRecordId(), name: '', initials: '', role: '', type: '', color: 'avatar-grey',
-    contributionAmount: '', pairsContributed: '', description: '', verificationStatus: 'pending'
-  } : getRecord('contributors', recordId);
-  if (!contributor) return;
-  contributorForm.dataset.recordId = contributor.id;
-  contributorForm.elements.name.value = contributor.name || '';
-  contributorForm.elements.initials.value = contributor.initials || '';
-  contributorForm.elements.role.value = contributor.role || '';
-  contributorForm.elements.type.value = contributor.type || '';
-  contributorForm.elements.color.value = contributor.color || 'avatar-grey';
-  contributorForm.elements.contributionAmount.value = contributor.contributionAmount ?? '';
-  contributorForm.elements.pairsContributed.value = contributor.pairsContributed ?? '';
-  contributorForm.elements.description.value = contributor.description || '';
-  contributorForm.elements.verificationStatus.value = contributor.verificationStatus;
-  document.querySelector('#contributor-form-message').textContent = '';
-  document.querySelector('#contributor-dialog-title').textContent = recordId === null ? 'Add contributor' : 'Edit contributor';
-  contributorDialog.showModal();
-  contributorForm.elements.name.focus();
-}
-
-function openSchoolEditor(recordId = null, returnFocus = null) {
-  editingSchoolId = recordId;
-  dialogReturnFocus = returnFocus;
-  const school = recordId === null
-    ? { id: window.createCampaignRecordId(), name: '', county: '', childrenReached: 0, pairsDelivered: 0, verificationStatus: 'pending' }
-    : getRecord('schools', recordId);
-  if (!school) return;
-  schoolForm.dataset.recordId = school.id;
-  schoolForm.elements.name.value = school.name || '';
-  schoolForm.elements.county.value = school.county || '';
-  schoolForm.elements.childrenReached.value = school.childrenReached ?? 0;
-  schoolForm.elements.pairsDelivered.value = school.pairsDelivered ?? 0;
-  schoolForm.elements.verificationStatus.value = school.verificationStatus;
-  document.querySelector('#school-form-message').textContent = '';
-  document.querySelector('#school-dialog-title').textContent = recordId === null ? 'Add school' : 'Edit school';
-  schoolDialog.showModal();
-  schoolForm.elements.name.focus();
-}
-
-function handleRecordMenuClick(event) {
-  const toggle = event.target.closest('[data-record-menu]');
-  if (toggle) {
-    if (openRecordMenuButton === toggle) {
-      closeRecordMenu();
-      return;
-    }
-    closeRecordMenu();
-    openRecordMenuButton = toggle;
-    const dropdown = document.getElementById(toggle.getAttribute('aria-controls'));
-    if (dropdown) dropdown.hidden = false;
-    toggle.setAttribute('aria-expanded', 'true');
-    dropdown?.querySelector('button')?.focus();
-    return;
-  }
-
-  const action = event.target.closest('[data-record-action]');
-  if (!action) return;
-  const collection = action.dataset.collection;
-  const recordId = action.dataset.recordId;
-  const menuButton = openRecordMenuButton;
-  closeRecordMenu();
-  const record = getRecord(collection, recordId);
-  if (!record) {
-    showMessage('This record is no longer available. Reload the dashboard and try again.', true);
-    return;
-  }
-
-  if (action.dataset.recordAction === 'edit') {
-    if (collection === 'contributors') openContributorEditor(recordId, menuButton);
-    else openSchoolEditor(recordId, menuButton);
-    return;
-  }
-
-  const candidate = cloneData(campaignData);
-  const candidateRecord = candidate[collection].find((item) => item.id === recordId);
-  if (action.dataset.recordAction === 'verification') {
-    candidateRecord.verificationStatus = candidateRecord.verificationStatus === 'verified' ? 'pending' : 'verified';
-    if (saveCandidate(candidate)) {
-      if (collection === 'contributors') renderContributors();
-      else renderSchools();
-      findRecordMenuButton(collection, recordId)?.focus();
-    } else if (menuButton?.isConnected) menuButton.focus();
-    return;
-  }
-
-  if (action.dataset.recordAction !== 'delete') return;
-  if (!window.confirm(`Delete ${record.name}? This cannot be undone.`)) {
-    if (menuButton?.isConnected) menuButton.focus();
-    return;
-  }
-  candidate[collection] = candidate[collection].filter((item) => item.id !== recordId);
-  if (!saveCandidate(candidate)) {
-    if (menuButton?.isConnected) menuButton.focus();
-    return;
-  }
-  if (collection === 'schools') renderSchools();
-  else renderContributors();
-  updateOverview();
-  const remainingButton = [...document.querySelectorAll('[data-record-menu]')]
-    .find((button) => button.dataset.collection === collection) ||
-    document.querySelector(collection === 'schools' ? '#add-school' : '#add-contributor');
-  remainingButton?.focus();
-}
-
-document.querySelector('#contributors-editor').addEventListener('click', handleRecordMenuClick);
-document.querySelector('#schools-editor').addEventListener('click', handleRecordMenuClick);
-
-document.addEventListener('click', (event) => {
-  if (openRecordMenuButton && !event.target.closest('.contributor-menu-wrap')) closeRecordMenu();
-});
-
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && openRecordMenuButton) {
-    event.preventDefault();
-    closeRecordMenu(true);
-  }
-});
-
-function restoreDialogFocus() {
-  if (dialogReturnFocus?.isConnected) dialogReturnFocus.focus();
-  dialogReturnFocus = null;
-}
-
-contributorDialog.addEventListener('close', restoreDialogFocus);
-schoolDialog.addEventListener('close', restoreDialogFocus);
-
-document.querySelector('#cancel-contributor-edit').addEventListener('click', () => contributorDialog.close());
-document.querySelector('#close-contributor-dialog').addEventListener('click', () => contributorDialog.close());
-document.querySelector('#cancel-school-edit').addEventListener('click', () => schoolDialog.close());
-document.querySelector('#close-school-dialog').addEventListener('click', () => schoolDialog.close());
-
-contributorForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const message = document.querySelector('#contributor-form-message');
-  if (!contributorForm.reportValidity()) return;
-  const id = editingContributorId === null ? contributorForm.dataset.recordId : editingContributorId;
-  const previous = editingContributorId === null ? {} : getRecord('contributors', id);
-  const contributor = {
-    ...previous,
-    id,
-    name: contributorForm.elements.name.value.trim(),
-    initials: contributorForm.elements.initials.value.trim(),
-    role: contributorForm.elements.role.value.trim(),
-    type: contributorForm.elements.type.value.trim(),
-    color: contributorForm.elements.color.value,
-    verificationStatus: contributorForm.elements.verificationStatus.value
-  };
-  for (const field of ['contributionAmount', 'pairsContributed']) {
-    const value = contributorForm.elements[field].value;
-    if (value === '') delete contributor[field];
-    else contributor[field] = Number(value);
-  }
-  const description = contributorForm.elements.description.value.trim();
-  if (description) contributor.description = description;
-  else delete contributor.description;
-
-  const candidate = cloneData(campaignData);
-  const savedId = id;
-  if (editingContributorId === null) candidate.contributors.push(contributor);
-  else candidate.contributors = candidate.contributors.map((item) => item.id === id ? contributor : item);
-  if (!saveCandidate(candidate)) {
-    message.textContent = document.querySelector('#save-message').textContent;
-    return;
-  }
-  renderContributors();
-  updateOverview();
-  dialogReturnFocus = findRecordMenuButton('contributors', savedId) || document.querySelector('#add-contributor');
-  editingContributorId = null;
-  contributorDialog.close();
-});
-
-schoolForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const message = document.querySelector('#school-form-message');
-  if (!schoolForm.reportValidity()) return;
-  const id = editingSchoolId === null ? schoolForm.dataset.recordId : editingSchoolId;
-  const previous = editingSchoolId === null ? {} : getRecord('schools', id);
-  const school = {
-    ...previous,
-    id,
-    name: schoolForm.elements.name.value.trim(),
-    county: schoolForm.elements.county.value.trim(),
-    childrenReached: Number(schoolForm.elements.childrenReached.value),
-    pairsDelivered: Number(schoolForm.elements.pairsDelivered.value),
-    verificationStatus: schoolForm.elements.verificationStatus.value
-  };
-  const candidate = cloneData(campaignData);
-  const savedId = id;
-  if (editingSchoolId === null) candidate.schools.push(school);
-  else candidate.schools = candidate.schools.map((item) => item.id === id ? school : item);
-  if (!saveCandidate(candidate)) {
-    message.textContent = document.querySelector('#save-message').textContent;
-    return;
-  }
-  renderSchools();
-  updateOverview();
-  dialogReturnFocus = findRecordMenuButton('schools', savedId) || document.querySelector('#add-school');
-  editingSchoolId = null;
-  schoolDialog.close();
-});
-
-document.querySelector('#add-contributor').addEventListener('click', () => {
-  openContributorEditor(null, document.querySelector('#add-contributor'));
-});
-
-document.querySelector('#add-school').addEventListener('click', () => {
-  openSchoolEditor(null, document.querySelector('#add-school'));
-});
-
-document.querySelector('#reset-data').addEventListener('click', () => {
-  if (!window.confirm('Reset all campaign information to the clean initial state? This clears saved statistics, contributors, and schools from this browser.')) return;
-  try {
-    window.clearCampaignData(lastSavedValue);
-    lastSavedValue = null;
-    dataLoadError = '';
-    migrationWarning = '';
-    campaignData = cloneData(window.campaignDefaults);
-    renderDashboard();
-    showMessage('Campaign data reset. Statistics are zero and contributor and school records are empty.');
-  } catch (error) {
-    showMessage(`Reset failed. Your saved campaign data was kept. ${error.message}`, true);
-  }
-});
-
-document.addEventListener('storage', (event) => {
-  if (event.key === storageKey && event.newValue !== lastSavedValue) {
-    showMessage('Campaign data changed in another tab. Reload this dashboard before making changes.', true);
-  }
-});
-
-renderDashboard();
-if (dataLoadError) showMessage(dataLoadError, true);
-else if (migrationWarning) showMessage(migrationWarning, true);
-
-const sidebarLinks = [...document.querySelectorAll('.sidebar-link')];
-const sidebarSections = sidebarLinks
-  .map((link) => document.querySelector(link.getAttribute('href')))
-  .filter(Boolean);
-
-function setActiveSidebarLink(sectionId) {
-  sidebarLinks.forEach((link) => {
-    const isActive = link.hash === `#${sectionId}`;
-    link.classList.toggle('is-active', isActive);
-    if (isActive) link.setAttribute('aria-current', 'page');
-    else link.removeAttribute('aria-current');
+function renderAll() {
+  renderTable('contributors-editor', 'contributors', [['name', 'Name'], ['phone', 'Phone'], ['email', 'Email'], ['public_consent', 'Public consent']], true);
+  renderTable('contributions-editor', 'contributions', [['amount', 'Amount'], ['payment_reference', 'Payment reference'], ['contributor_id', 'Contributor ID']]);
+  renderTable('procurements-editor', 'shoe_procurements', [['pairs_secured', 'Pairs secured'], ['purchase_date', 'Purchase date'], ['supplier', 'Supplier'], ['evidence_reference', 'Evidence'], ['notes', 'Notes']]);
+  renderTable('schools-editor', 'schools', [['school_name', 'School'], ['district', 'District'], ['contact_person', 'Contact person'], ['contact_phone', 'Contact phone'], ['public_consent', 'Public consent'], ['consent_given_at', 'Consent recorded at']], true);
+  renderTable('distributions-editor', 'distributions', [['campaign_id', 'Campaign'], ['school_id', 'School'], ['pairs_delivered', 'Pairs delivered'], ['children_reached', 'Children reached'], ['distributed_at', 'Distributed at'], ['notes', 'Notes']], true);
+  document.querySelectorAll('#distributions-editor tbody tr').forEach((tr, index) => {
+    const row = records.distributions[index];
+    tr.cells[0].textContent = campaignName(row.campaign_id);
+    tr.cells[1].textContent = schoolName(row.school_id);
   });
 }
 
-sidebarLinks.forEach((link) => link.addEventListener('click', () => setActiveSidebarLink(link.hash.slice(1))));
-
-if ('IntersectionObserver' in window) {
-  const sectionObserver = new IntersectionObserver((entries) => {
-    const visibleSections = entries.filter((entry) => entry.isIntersecting);
-    if (!visibleSections.length) return;
-    visibleSections.sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-    setActiveSidebarLink(visibleSections[0].target.id);
-  }, { rootMargin: '-15% 0px -65% 0px', threshold: [0, 0.15, 0.4] });
-  sidebarSections.forEach((section) => sectionObserver.observe(section));
+function campaignName(id) {
+  const campaign = records.campaigns.find((item) => String(item.id) === String(id));
+  return campaign?.campaign_name || campaign?.name || campaign?.title || id || '-';
+}
+function schoolName(id) {
+  const school = records.schools.find((item) => String(item.id) === String(id));
+  return school?.school_name || id || '-';
+}
+function dateTimeLocalValue(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+function consentPayload(publicConsent, existingTimestamp = null) {
+  if (!publicConsent) return { public_consent: false, consent_given_at: null };
+  const existingDate = existingTimestamp ? new Date(existingTimestamp) : null;
+  const timestamp = existingDate && !Number.isNaN(existingDate.getTime())
+    ? existingTimestamp
+    : new Date().toISOString();
+  return { public_consent: true, consent_given_at: timestamp };
+}
+function formatDistributionDate(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
 }
 
-if (dataLoadError) console.warn(dataLoadError);
-else if (migrationWarning) console.warn(migrationWarning);
+const fields = {
+  contributors: [
+    ['name', 'Name', 'text', true], ['phone', 'Phone', 'tel', false], ['email', 'Email', 'email', false], ['public_consent', 'Public listing consent', 'checkbox', false]
+  ],
+  contributions: [
+    ['contributor_id', 'Contributor', 'select', true], ['amount', 'Amount', 'number', true], ['payment_reference', 'Payment reference', 'text', false]
+  ],
+  shoe_procurements: [
+    ['pairs_secured', 'Pairs secured', 'number', true], ['purchase_date', 'Purchase date', 'date', true], ['supplier', 'Supplier', 'text', false], ['evidence_reference', 'Evidence reference', 'text', false], ['notes', 'Notes', 'textarea', false]
+  ],
+  schools: [
+    ['school_name', 'School name', 'text', true], ['district', 'District', 'text', false],
+    ['contact_person', 'Contact person', 'text', false], ['contact_phone', 'Contact phone', 'tel', false],
+    ['public_consent', 'Public listing consent', 'checkbox', false]
+  ],
+  distributions: [
+    ['campaign_id', 'Campaign', 'campaign-select', true], ['school_id', 'School', 'school-select', true],
+    ['pairs_delivered', 'Pairs delivered', 'number', true], ['children_reached', 'Children reached', 'number', false],
+    ['distributed_at', 'Distribution date and time', 'datetime-local', false], ['notes', 'Notes', 'textarea', false]
+  ]
+};
+function openEditor(table, row = null) {
+  if (table === 'distributions' && (!records.campaigns.length || !records.schools.length)) {
+    const missing = [!records.campaigns.length && 'campaign', !records.schools.length && 'school'].filter(Boolean);
+    setDistributionMessage(`Cannot open the form: add or load at least one ${missing.join(' and ')} first.`, true);
+    return;
+  }
+  editing = { table, row, isNew: !row };
+  document.querySelector('#dialog-title').textContent = `${row ? 'Edit' : 'Add'} ${table.replaceAll('_', ' ').replace(/s$/, '')}`;
+  const html = fields[table].map(([key, label, type, required]) => {
+    const value = key === 'distributed_at' ? dateTimeLocalValue(row?.[key]) : row?.[key] ?? '';
+    if (type === 'select' || type === 'campaign-select' || type === 'school-select') {
+      const source = type === 'campaign-select' ? records.campaigns : type === 'school-select' ? records.schools : records.contributors;
+      const options = source.map((item) => {
+        const optionLabel = type === 'campaign-select' ? (item.campaign_name || item.name || item.title || item.id) : type === 'school-select' ? item.school_name : item.name;
+        return `<option value="${escapeHtml(item.id)}" ${String(value) === String(item.id) ? 'selected' : ''}>${escapeHtml(optionLabel)}</option>`;
+      }).join('');
+      const placeholder = value ? '' : '<option value="" selected disabled>Select a record</option>';
+      return `<div class="field full"><label>${escapeHtml(label)}</label><select name="${key}" ${required ? 'required' : ''}>${placeholder}${options}</select></div>`;
+    }
+    if (type === 'checkbox') return `<label class="field consent-field"><input name="${key}" type="checkbox" ${value ? 'checked' : ''}> ${escapeHtml(label)}</label>`;
+    if (type === 'textarea') return `<div class="field full"><label>${escapeHtml(label)}</label><textarea name="${key}">${escapeHtml(value)}</textarea></div>`;
+    const min = '0';
+    const step = ['pairs_delivered', 'children_reached'].includes(key) ? '1' : 'any';
+    return `<div class="field${type === 'textarea' ? ' full' : ''}"><label>${escapeHtml(label)}</label><input name="${key}" type="${type}" value="${escapeHtml(value)}" ${required ? 'required' : ''} ${type === 'number' ? `min="${min}" step="${step}"` : ''}></div>`;
+  }).join('');
+  document.querySelector('#dialog-fields').innerHTML = html;
+  document.querySelector('#dialog-message').textContent = '';
+  document.querySelector('#record-dialog').showModal();
+  if (table === 'distributions') setDistributionMessage('Distribution form opened.');
+}
+
+function payloadFor(table, form) {
+  const value = (key) => form.elements[key]?.value.trim() || null;
+  if (table === 'schools') {
+    const publicConsent = form.elements.public_consent.checked;
+    const previouslyConsentedAt = editing.row?.public_consent === true ? editing.row.consent_given_at : null;
+    return {
+      school_name: value('school_name'), district: value('district'), contact_person: value('contact_person'),
+      contact_phone: value('contact_phone'), ...consentPayload(publicConsent, previouslyConsentedAt)
+    };
+  }
+  if (table === 'distributions') {
+    if (!records.campaigns.some((campaign) => campaign.id === value('campaign_id'))) throw new Error('Select a valid campaign.');
+    if (!records.schools.some((school) => school.id === value('school_id'))) throw new Error('Select a valid school.');
+    const distributedAt = value('distributed_at');
+    return {
+      campaign_id: value('campaign_id'), school_id: value('school_id'), pairs_delivered: Number(value('pairs_delivered')),
+      children_reached: Number(value('children_reached') || 0), ...(distributedAt ? { distributed_at: new Date(distributedAt).toISOString() } : {}),
+      notes: value('notes'), ...(editing.isNew ? { verification_status: 'pending' } : {})
+    };
+  }
+  if (table === 'contributors') {
+    const publicConsent = form.elements.public_consent.checked;
+    const previouslyConsentedAt = editing.row?.public_consent === true ? editing.row.consent_given_at : null;
+    return {
+      name: value('name'), phone: value('phone'), email: value('email'),
+      ...consentPayload(publicConsent, previouslyConsentedAt)
+    };
+  }
+  if (table === 'contributions') return { contributor_id: value('contributor_id'), campaign_id: activeCampaignId, amount: Number(value('amount')), payment_reference: value('payment_reference'), verification_status: 'pending' };
+  if (table === 'shoe_procurements') return { campaign_id: activeCampaignId, pairs_secured: Number(value('pairs_secured')), purchase_date: value('purchase_date'), supplier: value('supplier'), evidence_reference: value('evidence_reference'), notes: value('notes'), verification_status: 'pending' };
+  return {};
+}
+
+document.querySelector('#record-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (saving || !editing) return;
+  saving = true;
+  const submit = document.querySelector('#dialog-submit');
+  submit.disabled = true;
+  const { table, row, isNew } = editing;
+  let payload;
+  try {
+    payload = payloadFor(table, event.currentTarget);
+  } catch (error) {
+    saving = false;
+    submit.disabled = false;
+    document.querySelector('#dialog-message').textContent = error.message;
+    return;
+  }
+  let result;
+  try {
+    const query = !isNew ? client.from(table).update(payload).eq('id', row.id) : client.from(table).insert(payload);
+    result = await query;
+  } catch (error) {
+    result = { error };
+  }
+  saving = false;
+  submit.disabled = false;
+  if (result.error) { document.querySelector('#dialog-message').textContent = result.error.message; return; }
+  document.querySelector('#record-dialog').close();
+  setDashboardMessage('Record saved.');
+  await loadDashboardData();
+});
+
+async function reviewRecord(table, id, status) {
+  const { error } = await client.from(table).update({ verification_status: status, reviewed_by: activeUser.id, reviewed_at: new Date().toISOString() }).eq('id', id);
+  if (error) { setDashboardMessage(`Review update failed: ${error.message}`, true); return; }
+  setDashboardMessage(`Record ${status}.`);
+  await loadDashboardData();
+}
+async function updateContributorOrSchoolStatus(table, id, status) {
+  if (!['contributors', 'schools'].includes(table) || !['verified', 'rejected'].includes(status)) return;
+  const row = records[table].find((record) => String(record.id) === String(id));
+  if (!row) {
+    setDashboardMessage('This record is no longer available. Reload the dashboard and try again.', true);
+    return;
+  }
+  const label = table === 'contributors' ? 'contributor' : 'school';
+  if (!window.confirm(`Set ${label} "${row.name || row.school_name}" status to ${status}?`)) return;
+  const consent = consentPayload(row.public_consent === true, row.public_consent === true ? row.consent_given_at : null);
+  const { error } = await client.from(table).update({ status, ...consent }).eq('id', id);
+  if (error) {
+    setDashboardMessage(`Could not update ${label} status: ${error.message}`, true);
+    return;
+  }
+  await loadDashboardData(`${label[0].toUpperCase()}${label.slice(1)} status updated to ${status}.`);
+}
+document.addEventListener('click', (event) => {
+  const statusReview = event.target.closest('[data-status-review]');
+  if (statusReview) {
+    statusReview.disabled = true;
+    updateContributorOrSchoolStatus(statusReview.dataset.table, statusReview.dataset.id, statusReview.dataset.statusReview)
+      .finally(() => { statusReview.disabled = false; });
+    return;
+  }
+  const review = event.target.closest('[data-review]');
+  if (review) {
+    review.disabled = true;
+    reviewRecord(review.dataset.table, review.dataset.id, review.dataset.review).finally(() => { review.disabled = false; });
+    return;
+  }
+  const edit = event.target.closest('[data-edit]');
+  if (edit) openEditor(edit.dataset.edit, records[edit.dataset.edit].find((row) => String(row.id) === edit.dataset.id));
+});
+for (const [button, table] of [['add-contributor', 'contributors'], ['add-contribution', 'contributions'], ['add-procurement', 'shoe_procurements'], ['add-school', 'schools']]) {
+  document.querySelector(`#${button}`).addEventListener('click', () => openEditor(table));
+}
+document.querySelector('#add-distribution').addEventListener('click', () => {
+  setDistributionMessage('Checking available campaigns and schools...');
+  try {
+    openEditor('distributions');
+  } catch (error) {
+    console.error('Could not open the distribution form.', error);
+    setDistributionMessage(`Could not open the distribution form: ${error.message}`, true);
+  }
+});
+document.querySelector('#dialog-close').addEventListener('click', () => document.querySelector('#record-dialog').close());
+document.querySelector('#dialog-cancel').addEventListener('click', () => document.querySelector('#record-dialog').close());
+
+const adminMenuToggle = document.querySelector('#admin-menu-toggle');
+const adminSidebarNav = document.querySelector('#admin-sidebar-nav');
+function setAdminNavigationOpen(isOpen) {
+  adminMenuToggle.setAttribute('aria-expanded', String(isOpen));
+  adminMenuToggle.setAttribute('aria-label', isOpen ? 'Close dashboard navigation' : 'Open dashboard navigation');
+  adminSidebarNav.classList.toggle('is-open', isOpen);
+}
+adminMenuToggle.addEventListener('click', () => {
+  setAdminNavigationOpen(adminMenuToggle.getAttribute('aria-expanded') !== 'true');
+});
+adminSidebarNav.querySelectorAll('a').forEach((link) => {
+  link.addEventListener('click', () => setAdminNavigationOpen(false));
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && adminMenuToggle.getAttribute('aria-expanded') === 'true') {
+    setAdminNavigationOpen(false);
+    adminMenuToggle.focus();
+  }
+});
+
+(async function initializeAuth() {
+  document.querySelector('#login-form').hidden = true;
+  setAuthMessage('Checking administrator session...');
+  try {
+    const { data, error } = await client.auth.getSession();
+    if (error) throw error;
+    if (!data.session) { showGate('Sign in with your administrator account.'); return; }
+    await authorizeSession(data.session);
+  } catch (error) {
+    showGate(`Could not check your session: ${error.message}`, true);
+  }
+  client.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT' || !session) {
+      activeUser = null;
+      showGate('Your session ended or expired. Please sign in again.');
+    }
+  });
+})();

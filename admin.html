@@ -1,126 +1,63 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
-  <meta name="description" content="Local prototype dashboard for managing A Million Shoes Kenya campaign data.">
+  <meta name="description" content="A Million Shoes Kenya campaign administration dashboard.">
   <title>Campaign Admin · A Million Shoes Kenya</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="admin.css">
-  <script src="campaign-data.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js" defer></script>
   <script src="admin.js" defer></script>
 </head>
 <body>
-  <div class="dashboard-shell">
-    <aside class="admin-sidebar" aria-label="Dashboard sidebar">
-      <a class="sidebar-brand" href="#overview" aria-label="A Million Shoes Kenya dashboard home">
-        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
-        <span>A Million Shoes <b>Kenya</b><small>Campaign workspace</small></span>
-      </a>
-      <p class="sidebar-label">WORKSPACE</p>
-      <nav class="sidebar-nav" aria-label="Admin navigation">
-        <a class="sidebar-link is-active" href="#overview-section" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg><span>Overview</span></a>
-        <a class="sidebar-link" href="#statistics"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16M6.5 16V11m5 5V5m5 11v-7"/><path d="m5.5 8 5-3 5 3 4-3"/></svg><span>Campaign stats</span></a>
-        <a class="sidebar-link" href="#contributors"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.5-4.7 5.5-4.7s4.9 1.7 5.5 4.7M16 5.5a3.2 3.2 0 0 1 0 6.2m1 2.8c2 .7 3.2 2.2 3.5 4.5"/></svg><span>Contributors</span></a>
-        <a class="sidebar-link" href="#schools"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 9 9-5 9 5M5 10.5h14M6.5 11v7m3.7-7v7m3.6-7v7m3.7-7v7M4 20h16"/></svg><span>Schools</span></a>
-        <a class="sidebar-link" href="#prototype"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 6v5.3c0 4.3-2.4 7.3-7 9.2-4.6-1.9-7-4.9-7-9.2V6l7-2.5Z"/><path d="m9 12 2 2 4-4"/></svg><span>Data &amp; reset</span></a>
-      </nav>
-      <div class="sidebar-bottom"><span class="flag-detail" aria-hidden="true"><i></i><i></i><i></i></span><span>Rooted in Kenya<br><small>Local prototype</small></span></div>
-    </aside>
-
-    <div class="dashboard-main">
-      <header class="dashboard-topbar">
-        <div class="topbar-context"><span>AMSK</span><span aria-hidden="true">/</span><strong>Campaign dashboard</strong></div>
-        <a class="preview-link" href="index.html" target="_blank" rel="noopener">Preview website <span aria-hidden="true">↗</span></a>
-      </header>
-
-  <main class="admin-main" id="overview">
-    <div class="page-heading" id="overview-section">
-      <div><p class="eyebrow">Campaign workspace</p><h1>Dashboard overview</h1><p>Enter and verify campaign information supplied from the campaign records.</p></div>
-      <span class="demo-badge"><i></i><span id="campaign-data-status">DATA PENDING</span></span>
-    </div>
-
-    <aside class="security-note" aria-label="Prototype security notice"><strong>Local prototype only.</strong> Changes are saved in this browser. This dashboard has no authentication and is not secure for public use or sensitive information.</aside>
-
-    <section class="overview-grid" aria-label="Campaign overview">
-      <article class="overview-card"><div class="overview-card-top"><span>Campaign target</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5h16v11H4zM4 8.5 6 5h12l2 3.5M8 12h8"/></svg></div><strong id="overview-target">—</strong><small>pairs of shoes</small><i class="card-accent green-accent"></i></article>
-      <article class="overview-card"><div class="overview-card-top"><span>Shoes secured</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15.5c3.5-1 4-4.5 5-7 1.2-2.8 3.1-3.5 5.4-1.6l2.8 2.3 2.3.5 1 4.3c-4.5 1.4-11.3 1.7-16.5.4-1.2-.3-1.4-2.2 0-2.9Z"/><path d="M5 17c5 1.2 11.5 1.1 16-.2"/></svg></div><strong id="overview-secured">—</strong><small>pairs</small><i class="card-accent red-accent"></i></article>
-      <article class="overview-card"><div class="overview-card-top"><span>Shoes distributed</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 15v5h14v-5"/></svg></div><strong id="overview-distributed">—</strong><small>pairs</small><i class="card-accent green-accent"></i></article>
-      <article class="overview-card"><div class="overview-card-top"><span>Remaining shoes</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg></div><strong id="overview-remaining">—</strong><small>pairs to target</small><i class="card-accent neutral-accent"></i></article>
-      <article class="overview-card"><div class="overview-card-top"><span>Progress</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16M6.5 16V11m5 5V5m5 11v-7"/></svg></div><strong id="overview-progress">—</strong><small>based on shoes secured</small><i class="card-accent red-accent"></i></article>
-      <article class="overview-card"><div class="overview-card-top"><span>Contributors</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.5-4.7 5.5-4.7s4.9 1.7 5.5 4.7M16 5.5a3.2 3.2 0 0 1 0 6.2m1 2.8c2 .7 3.2 2.2 3.5 4.5"/></svg></div><strong id="overview-contributors">—</strong><small>all records</small><i class="card-accent green-accent"></i></article>
-      <article class="overview-card"><div class="overview-card-top"><span>Schools reached</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 9 9-5 9 5M5 10.5h14M6.5 11v7m3.7-7v7m3.6-7v7m3.7-7v7M4 20h16"/></svg></div><strong id="overview-schools">—</strong><small>campaign total</small><i class="card-accent neutral-accent"></i></article>
-    </section>
-
-    <section id="statistics" aria-label="Campaign statistics">
-    <form class="admin-panel stats-panel" id="stats-form">
-      <div class="panel-heading"><div><p class="eyebrow">Campaign totals</p><h2>Campaign statistics</h2></div><p>Progress = pairs secured ÷ target.</p></div>
-      <p class="section-help">Campaign-wide schools and children totals are entered separately from individual school records.</p>
-      <div class="progress-summary"><div class="progress-summary-copy"><div><span>Campaign progress</span><small>Secured against your target</small></div><strong id="overview-progress-inline">—</strong></div><div class="progress-track" role="progressbar" aria-label="Campaign progress based on pairs secured" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="admin-progress-fill"></span></div></div>
-      <div class="field-grid stats-fields">
-        <div class="field"><label for="target">Campaign target</label><input id="target" name="target" type="number" min="0" step="1" required></div>
-        <div class="field"><label for="pairs-secured">Shoes secured</label><input id="pairs-secured" name="pairsSecured" type="number" min="0" step="1" required></div>
-        <div class="field"><label for="pairs-distributed">Shoes distributed</label><input id="pairs-distributed" name="pairsDistributed" type="number" min="0" step="1" required></div>
-        <div class="field"><label for="schools-reached-total">Schools reached (campaign total)</label><input id="schools-reached-total" name="schoolsReached" type="number" min="0" step="1" required></div>
-        <div class="field"><label for="children-reached-total">Children reached (campaign total)</label><input id="children-reached-total" name="childrenReached" type="number" min="0" step="1" required></div>
-      </div>
-      <div class="form-actions"><p id="save-message" class="status-message" role="status" aria-live="polite"></p><button class="button button-dark" type="submit">Save campaign statistics</button></div>
+  <main class="auth-page" id="auth-gate" aria-labelledby="auth-title">
+    <form class="auth-card" id="login-form">
+      <a class="sidebar-brand" href="index.html"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span>A Million Shoes <b>Kenya</b><small>Campaign workspace</small></span></a>
+      <p class="eyebrow">Administrator access</p><h1 id="auth-title">Sign in</h1>
+      <p class="section-help">Use your registered administrator account to access campaign records.</p>
+      <label class="auth-label" for="login-email">Email</label><input id="login-email" name="email" type="email" autocomplete="username" required>
+      <label class="auth-label" for="login-password">Password</label><input id="login-password" name="password" type="password" autocomplete="current-password" required>
+      <button class="button button-dark" id="login-submit" type="submit">Sign in</button>
+      <p class="auth-message" id="auth-message" role="status" aria-live="polite">Checking administrator session…</p>
+      <a class="bottom-preview" href="index.html">← Return to the public website</a>
     </form>
-    </section>
-
-    <section class="admin-panel" id="contributors" aria-labelledby="contributors-title">
-      <div class="panel-heading"><div><p class="eyebrow">People behind the work</p><h2 id="contributors-title">Contributors</h2></div><button class="button button-outline" id="add-contributor" type="button">Add contributor</button></div>
-      <p class="section-help">Add contributor details from the campaign records after they have been verified.</p>
-      <div id="contributors-editor" class="contributor-list"></div>
-      <dialog class="contributor-dialog" id="contributor-dialog" aria-labelledby="contributor-dialog-title">
-        <form id="contributor-form" novalidate>
-          <div class="dialog-heading"><div><p class="eyebrow">Contributor details</p><h3 id="contributor-dialog-title">Edit contributor</h3></div><button class="dialog-close" id="close-contributor-dialog" type="button" aria-label="Close editor">×</button></div>
-          <div class="record-fields contributor-fields">
-            <div class="field"><label for="contributor-name">Name</label><input id="contributor-name" name="name" required></div>
-            <div class="field"><label for="contributor-initials">Initials</label><input id="contributor-initials" name="initials" maxlength="3"></div>
-            <div class="field"><label for="contributor-role">Role</label><input id="contributor-role" name="role"></div>
-            <div class="field"><label for="contributor-type">Contributor type</label><input id="contributor-type" name="type"></div>
-            <div class="field"><label for="contributor-color">Avatar colour</label><select id="contributor-color" name="color"><option value="avatar-red">Red</option><option value="avatar-green">Green</option><option value="avatar-grey">Grey</option></select></div>
-            <div class="field"><label for="contributor-verification">Verification status</label><select id="contributor-verification" name="verificationStatus" required><option value="pending">Pending verification</option><option value="verified">Verified</option></select></div>
-            <div class="field"><label for="contributor-amount">Contribution amount (optional)</label><input id="contributor-amount" name="contributionAmount" type="number" min="0" step="1"></div>
-            <div class="field"><label for="contributor-pairs">Pairs contributed (optional)</label><input id="contributor-pairs" name="pairsContributed" type="number" min="0" step="1"></div>
-            <div class="field full"><label for="contributor-description">Description (optional)</label><textarea id="contributor-description" name="description"></textarea></div>
-          </div>
-          <p id="contributor-form-message" class="dialog-message" role="alert" aria-live="polite"></p>
-          <div class="dialog-actions"><button class="button button-outline" id="cancel-contributor-edit" type="button">Cancel</button><button class="button button-dark" type="submit">Save contributor</button></div>
-        </form>
-      </dialog>
-    </section>
-
-    <section class="admin-panel" id="schools" aria-labelledby="schools-title">
-      <div class="panel-heading"><div><p class="eyebrow">Delivery locations</p><h2 id="schools-title">Schools</h2></div><button class="button button-outline" id="add-school" type="button">Add school</button></div>
-      <div id="schools-editor" class="school-list"></div>
-      <dialog class="contributor-dialog" id="school-dialog" aria-labelledby="school-dialog-title">
-        <form id="school-form" novalidate>
-          <div class="dialog-heading"><div><p class="eyebrow">School details</p><h3 id="school-dialog-title">Edit school</h3></div><button class="dialog-close" id="close-school-dialog" type="button" aria-label="Close editor">×</button></div>
-          <div class="record-fields contributor-fields">
-            <div class="field full"><label for="school-name">School name</label><input id="school-name" name="name" required></div>
-            <div class="field full"><label for="school-county">Location / county</label><input id="school-county" name="county"></div>
-            <div class="field"><label for="school-children">Children reached</label><input id="school-children" name="childrenReached" type="number" min="0" step="1" required></div>
-            <div class="field"><label for="school-pairs">Pairs delivered</label><input id="school-pairs" name="pairsDelivered" type="number" min="0" step="1" required></div>
-            <div class="field full"><label for="school-verification">Verification status</label><select id="school-verification" name="verificationStatus" required><option value="pending">Pending verification</option><option value="verified">Verified</option></select></div>
-          </div>
-          <p id="school-form-message" class="dialog-message" role="alert" aria-live="polite"></p>
-          <div class="dialog-actions"><button class="button button-outline" id="cancel-school-edit" type="button">Cancel</button><button class="button button-dark" type="submit">Save school</button></div>
-        </form>
-      </dialog>
-    </section>
-
-    <section class="admin-panel reset-panel" id="prototype" aria-labelledby="reset-title">
-      <div><p class="eyebrow">Start over</p><h2 id="reset-title">Reset campaign data</h2><p>Clear saved campaign information from this browser and return to the clean initial state.</p></div>
-      <button class="button button-danger" id="reset-data" type="button">Reset campaign data</button>
-    </section>
-    <p class="bottom-preview"><a href="index.html">← Return to the public website</a></p>
   </main>
+  <div class="dashboard-shell" id="admin-dashboard" hidden>
+    <aside class="admin-sidebar" aria-label="Dashboard sidebar">
+      <a class="sidebar-brand" href="#overview"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span>A Million Shoes <b>Kenya</b><small>Campaign workspace</small></span></a>
+      <button class="admin-menu-toggle" id="admin-menu-toggle" type="button" aria-expanded="false" aria-controls="admin-sidebar-nav" aria-label="Open dashboard navigation"><span></span><span></span></button>
+      <p class="sidebar-label">WORKSPACE</p>
+      <nav class="sidebar-nav" id="admin-sidebar-nav" aria-label="Admin navigation">
+        <a class="sidebar-link is-active" href="#overview">Overview</a><a class="sidebar-link" href="#contributors">Contributors &amp; contributions</a><a class="sidebar-link" href="#procurements">Shoe procurement</a><a class="sidebar-link" href="#schools">Schools &amp; distributions</a>
+      </nav>
+      <div class="sidebar-bottom"><span>Secure administrator session<br><small>Database protected by RLS</small></span></div>
+    </aside>
+    <div class="dashboard-main">
+      <header class="dashboard-topbar"><div class="topbar-context"><span>AMSK</span><span aria-hidden="true">/</span><strong>Campaign dashboard</strong></div><div class="topbar-actions"><a class="preview-link" href="index.html" target="_blank" rel="noopener">Preview website ↗</a><button class="button button-outline" id="logout-button" type="button">Log out</button></div></header>
+      <main class="admin-main" id="overview">
+        <div class="page-heading"><div><p class="eyebrow">Campaign workspace</p><h1>Dashboard overview</h1><p>Verified records feed the campaign totals.</p></div><span class="demo-badge"><i></i><span id="data-status">LOADING</span></span></div>
+        <p class="status-message" id="dashboard-message" role="status" aria-live="polite"></p>
+        <section class="overview-grid" aria-label="Calculated campaign statistics">
+          <article class="overview-card"><div class="overview-card-top"><span>Campaign target</span></div><strong id="stat-target">—</strong><small>pairs of shoes</small></article>
+          <article class="overview-card"><div class="overview-card-top"><span>Shoes secured</span></div><strong id="stat-secured">—</strong><small>verified procurement</small></article>
+          <article class="overview-card"><div class="overview-card-top"><span>Shoes distributed</span></div><strong id="stat-distributed">—</strong><small>verified distributions</small></article>
+          <article class="overview-card"><div class="overview-card-top"><span>Schools reached</span></div><strong id="stat-schools">—</strong><small>campaign total</small></article>
+          <article class="overview-card"><div class="overview-card-top"><span>Children reached</span></div><strong id="stat-children">—</strong><small>campaign total</small></article>
+          <article class="overview-card"><div class="overview-card-top"><span>Progress</span></div><strong id="stat-progress">—</strong><small>secured against target</small></article>
+        </section>
+        <section class="admin-panel" id="contributors"><div class="panel-heading"><div><p class="eyebrow">People behind the work</p><h2>Contributors</h2></div><button class="button button-outline" id="add-contributor">Add contributor</button></div><div id="contributors-editor" class="table-wrap"></div>
+          <div class="panel-heading subheading"><div><p class="eyebrow">Recorded support</p><h2>Monetary contributions</h2></div><button class="button button-outline" id="add-contribution">Record contribution</button></div><div id="contributions-editor" class="table-wrap"></div>
+        </section>
+        <section class="admin-panel" id="procurements"><div class="panel-heading"><div><p class="eyebrow">Shoes secured</p><h2>Shoe procurement</h2></div><button class="button button-outline" id="add-procurement">Record procurement</button></div><div id="procurements-editor" class="table-wrap"></div></section>
+        <section class="admin-panel" id="schools"><div class="panel-heading"><div><p class="eyebrow">Delivery locations</p><h2>Schools</h2></div><button class="button button-outline" id="add-school" type="button">Add school</button></div><div id="schools-editor" class="table-wrap"></div><div class="panel-heading subheading"><div><p class="eyebrow">Distribution records</p><h2>Shoe distributions</h2></div><button class="button button-outline" id="add-distribution" type="button">Record distribution</button></div><p class="section-help distribution-action-message" id="distribution-action-message" role="status" aria-live="polite"></p><div id="distributions-editor" class="table-wrap"></div></section>
+      </main>
     </div>
   </div>
+  <dialog class="contributor-dialog" id="record-dialog"><form id="record-form"><div class="dialog-heading"><div><p class="eyebrow" id="dialog-eyebrow">Record</p><h3 id="dialog-title">Edit record</h3></div><button class="dialog-close" id="dialog-close" type="button" aria-label="Close editor">×</button></div><div class="record-fields contributor-fields" id="dialog-fields"></div><p class="dialog-message" id="dialog-message" role="alert" aria-live="polite"></p><div class="dialog-actions"><button class="button button-outline" id="dialog-cancel" type="button">Cancel</button><button class="button button-dark" id="dialog-submit" type="submit">Save record</button></div></form></dialog>
 </body>
 </html>
