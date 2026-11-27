@@ -118,6 +118,13 @@ document.querySelector('#school-data-note').textContent = 'Public school informa
 document.querySelector('#contributor-grid').innerHTML = '<p class="public-empty-state">Loading public contributors…</p>';
 document.querySelector('#school-list').innerHTML = '<p class="public-empty-state">Loading public schools…</p>';
 loadPublicCampaignData();
+const sayHelloLink = document.querySelector('#say-hello-link');
+const isMobileDevice = navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+if (isMobileDevice) {
+  sayHelloLink.href = sayHelloLink.dataset.mobileHref;
+  sayHelloLink.removeAttribute('target');
+  sayHelloLink.removeAttribute('rel');
+}
 const menuButton = document.querySelector('.menu-toggle');
 const navLinks = document.querySelector('.nav-links');
 
